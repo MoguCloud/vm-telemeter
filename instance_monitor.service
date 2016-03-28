@@ -1,0 +1,13 @@
+[Unit]
+Description=OpenStack Instance Monitor Server
+After=syslog.target network.target
+
+[Service]
+Type=forking
+PIDFile=/var/run/instance_monitor.pid
+Restart=always
+User=root
+ExecStart=/usr/bin/python /lib/python2.7/site-packages/nova/compute/instance_monitor.py
+
+[Install]
+WantedBy=multi-user.target

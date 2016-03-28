@@ -9,13 +9,15 @@ import ConfigParser
 import sys
 from pymongo import MongoClient
 import pymongo
-
+import copy
+import alarm
 
 cf = ConfigParser.ConfigParser()
-cf.read('/etc/ga_to_mongo.conf')
+cf.read('/etc/instance_monitor.conf')
 interval = int(cf.get('mongo', 'interval'))
 mongo_ip = cf.get('mongo', 'ip')
-mongo_port = cf.get('mongo', 'port')
+mongo_port = int(cf.get('mongo', 'port'))
+expire = int(cf.get('mongo', 'expire'))
 
 
 def run():
@@ -26,6 +28,9 @@ def run():
     client = MongoClient(mongo_ip, mongo_port)
     db = client.jk
     conn = libvirt.open(None)
+    current_collection = db['current']
+    total_collection = db['total']
+
     while True:
         ids = conn.listDomainsID()
         if ids is None or len(ids) == 0:
@@ -45,13 +50,55 @@ def run():
                 if result != {}:
                     global collection
                     try:
+                        # add_data
+                        current_total = current_collection.find_one({'_id':uuid})
+                        try:
+                            if current_total is None:
+                                current_total = result
+                                total = {'processstat': [], 'login': [], 'netstat': [{'receive': {'bytes': 0, 'frame': 0, 'drop': 0, 'packets': 0, 'fifo': 0, 'multicast': 0, 'compressed': 0, 'errs': 0}, 'transmit': {'bytes': 0, 'drop': 0, 'packets': 0, 'fifo': 0, 'carrier': 0, 'colls': 0, 'compressed': 0, 'errs': 0}, 'devname': 'eth0'}, {'receive': {'bytes': 0, 'frame': 0, 'drop': 0, 'packets': 0, 'fifo': 0, 'multicast': 0, 'compressed': 0, 'errs': 0}, 'transmit': {'bytes': 0, 'drop': 0, 'packets': 0, 'fifo': 0, 'carrier': 0, 'colls': 0, 'compressed': 0, 'errs': 0}, 'devname': 'lo'}], 'diskstat': [{'statistics': {'kb_read': 0, 'speed_kb_read': 0, 'tps': 0, 'speed_kb_write': 0, 'kb_write': 0}, 'devname': 'vda'}], 'memstat': {'total': 0, 'used': 0}}
+                            else:
+                                total = total_collection.find_one({'_id':uuid})
+                                if result['netstat'][0]['receive']['bytes'] >= current_total['netstat'][0]['receive']['bytes']:
+                                    current_total = result
+                                else:
+                                    total, current_total = add_data(total, current_total)
+                                    current_total = result
+                                result, current_total = add_data(total, current_total)
+                        except KeyError, e:
+                            logging.error(e)
+                            continue
+
+                        # send result to mongodb
                         collection = db[uuid]
+                        collection.create_index('time', expireAfterSeconds=expire)
                         get_speed(result)
                         collection.insert_one(result)
-                    except pymongo.errors.AutoReconnect:
-                        logging.error('Failed to connect mongodb')
+
+                        # alarm
+                        try:
+                            alarm.match_alarm(uuid, result)
+                        except Exception, e:
+                            logging.error(e)
+
+                        # send add_data to mongodb
+                        total.update({'_id': uuid})
+                        current_total.update({'_id': uuid})
+                        r1 = total_collection.update({'_id': uuid}, total)
+                        r2 = current_collection.update({'_id': uuid}, current_total)
+                        if r1['updatedExisting'] is False:
+                            total_collection.insert_one(total)
+                        if r2['updatedExisting'] is False:
+                            current_collection.insert_one(current_total)
+
+                    except pymongo.errors.AutoReconnect, e:
+                        logging.error('Failed to connect mongodb %s' % e)
                         continue
-        time.sleep(20)
+
+                    except pymongo.errors.OperationFailure, e:
+                        logging.error('Failed to connect mongodb' % e)
+                        continue
+
+        time.sleep(interval)
 
 
 def daemonize(pidfile, stdin='/dev/null', stdout='/dev/null', stderr='/dev/null'):
@@ -138,11 +185,32 @@ def get_speed(result):
                 result['netspeed'].append(netspeed)
 
 
-def main():
-    daemonize(pidfile='/var/run/ga_to_mongo.pid', stderr='/var/log/ga_to_mongo.log')
+def add_data(previous, current):
+    current_tmp = copy.deepcopy(current)
+    previous_diskstat = previous['diskstat']
+    current_diskstat = current['diskstat']
+    previous_netstat = previous['netstat']
+    current_netstat = current['netstat']
+    for pre in previous_diskstat:
+        for cur in current_diskstat:
+            if pre['devname'] == cur['devname']:
+                cur['statistics']['kb_read'] += pre['statistics']['kb_read']
+                cur['statistics']['kb_write'] += pre['statistics']['kb_write']
+
+    for pre in previous_netstat:
+        for cur in current_netstat:
+            if pre['devname'] == cur['devname']:
+                for keys in cur['receive']:
+                    cur['receive'][keys] += pre['receive'][keys]
+                for keys in cur['transmit']:
+                    cur['transmit'][keys] += pre['transmit'][keys]
+    return current, current_tmp
+
+
+def start():
+    daemonize(pidfile='/var/run/instance_monitor.pid', stderr='/var/log/instance_monitor.log')
     run()
 
 
-
 if __name__ == '__main__':
-    main()
+    start()
