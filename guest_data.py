@@ -80,7 +80,7 @@ def get_disk(uuid, count, switch):
     collection = db[uuid]
     result_dict = {'data': {}, 'dev_list': []}
     unwind = {'$unwind': '$diskstat'}
-    match = {'$match': { 'diskstat.devname': {'$regex': 'vd'}}}
+    match = {'$match': { 'diskstat.devname': {'$regex': 'vd|disk'}}}
     group = {'$group': {'_id': '$_id', 'dev': {'$push': '$diskstat.devname'}, 'speed': {'$push': switch}, 'time': {'$push': '$time'}}}
     sort = {'$sort': SON([('_id', -1)])}
     reverse = {'$sort': SON([('_id', 1)])}

@@ -112,7 +112,7 @@ def post(url, data):
 
 def cut_result(result):
     try:
-        result['diskstat'] = filter(lambda diskstat: 'vd' in diskstat['devname'], result['diskstat'])
+        result['diskstat'] = filter(lambda diskstat: 'vd' or 'disk' in diskstat['devname'], result['diskstat'])
         result['netspeed'] = filter(lambda netspeed: 'eth0' in netspeed['devname'], result['netspeed'])
     except KeyError:
         pass
