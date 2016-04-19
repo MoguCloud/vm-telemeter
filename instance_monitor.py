@@ -32,13 +32,17 @@ def run():
     total_collection = db['total']
 
     while True:
-        ids = conn.listDomainsID()
+        time.sleep(interval)
+        try:
+            ids = conn.listDomainsID()
+        except Exception:
+            continue
         if ids is None or len(ids) == 0:
             logging.error('Failed to get running domains')
         for id in ids:
-            dom = conn.lookupByID(id)
-            uuid = dom.UUIDString()
             try:
+                dom = conn.lookupByID(id)
+                uuid = dom.UUIDString()
                 result = libvirt_qemu.qemuAgentCommand(dom, '{"execute":"guest-get-total-info"}', 1, 0)
                 result = eval(result)['return']
                 result['time'] = datetime.datetime.now()
@@ -98,7 +102,9 @@ def run():
                         logging.error('Failed to connect mongodb' % e)
                         continue
 
-        time.sleep(interval)
+                    except Exception, e:
+                        logging.error(e)
+                        continue
 
 
 def daemonize(pidfile, stdin='/dev/null', stdout='/dev/null', stderr='/dev/null'):
