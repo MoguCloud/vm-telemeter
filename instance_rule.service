@@ -1,0 +1,13 @@
+[Unit]
+Description=OpenStack Instance Rule Storage
+After=syslog.target network.target
+
+[Service]
+Type=forking
+PIDFile=/var/run/instance_rule.pid
+Restart=always
+User=root
+ExecStart=/usr/bin/python /usr/share/instance_rule/instance_rule.py
+
+[Install]
+WantedBy=multi-user.target

@@ -4,11 +4,18 @@ import libvirt_qemu
 import requests
 import json
 import ConfigParser
+import pymongo
+from pymongo import MongoClient
+
 
 cf = ConfigParser.ConfigParser()
 cf.read('/etc/instance_monitor.conf')
 rule_url = cf.get('api', 'rule_url')
 post_url = cf.get('api', 'post_url')
+mongo_ip = cf.get('mongo', 'ip')
+mongo_port = int(cf.get('mongo', 'port'))
+
+
 rule = dict(cpu_load_high=None, cpu_load_low=None, cpu_usage_high=None, cpu_usage_low=None, disk_read_speed_high=None,
             disk_read_speed_low=None, net_read_speed_high=None, net_read_speed_low=None, net_write_speed_high=None,
             net_write_speed_low=None, process_numb_high=None, process_numb_low=None, disk_write_speed_high=None,
@@ -39,9 +46,10 @@ event_dict = dict(cpu_load_high='CPU负载:%d 超过报警值:%d\n', cpu_load_lo
 post_data = {"detail": None,"name": None, "rule_id": None}
 
 def get_alarm():
-    headers = {'content-type': 'application/json'}
-    re = requests.get(rule_url, headers=headers)
-    alarms = json.loads(re.content)['objects']
+    client = MongoClient(mongo_ip, mongo_port)
+    db = client.rule
+    collection = db['rule']
+    alarms = collection.find_one()['alarms']
     alarm_uuids = [alarm['instance_uuid'] for alarm in alarms]
     return alarms, alarm_uuids
 

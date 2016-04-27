@@ -94,9 +94,14 @@ def get_disk(uuid, time_match, switch):
             result_dict['data'][devname]['time'].append(datetime.datetime.strftime(time, '%Y-%m-%d %H:%M'))
     return result_dict
 
+def get_all(uuid, time_match):
+    collection = db[uuid]
+    result = list(collection.aggregate([time_match]))
+    return result
+
 
 entry = dict(mem=get_mem, cpu=get_cpu, disk_read=get_read_disk, disk_write=get_write_disk,
-             net_receive=get_receive_netspeed, net_transmit=get_transmit_netspeed, process=get_process)
+             net_receive=get_receive_netspeed, net_transmit=get_transmit_netspeed, process=get_process, all_data=get_all)
 
 
 def get_data(option, uuid, d=None, h=None):
